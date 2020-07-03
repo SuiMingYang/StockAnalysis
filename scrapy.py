@@ -30,7 +30,7 @@ class Stock(object):
         self.lock = threading.Lock()
         self.header = ['id','ts_code','trade_date','open','high','low','close','pre_close','change','pct_chg','vol','amount','turnover_rate','turnover_rate_f','volume_ratio','pe','pe_ttm','pb','ps','ps_ttm','dv_ratio','dv_ttm','total_share','float_share','free_share','total_mv','circ_mv','created_at','updated_at']
 
-    def __get_namecode__(self):
+    def __get_namecode__(self,mode):
         if os.path.exists(conf.get('file','name')):
             ts_name_code=pd.read_csv(conf.get('file','name'))
         else:
@@ -42,7 +42,11 @@ class Stock(object):
         self.area=ts_name_code['area']
         start=datetime.datetime.now()
         self.priord=datetime.timedelta(days=int(conf.get('var','timerank')))
-        self.__get_timerank__(start)
+        if mode=='time':
+            self.__get_timerank__(start)
+        else:
+            self.__startdate_enddate__()
+
 
     def __get_timerank__(self,start):
         self.timerank=[]
@@ -54,11 +58,29 @@ class Stock(object):
             t.append(st.strftime(conf.get('var','format')))
             start=et
             self.timerank.append(t)
+    
+    def __startdate_enddate__(self):
+        startdate=datetime.datetime.strptime(conf.get('var','startdate'),'%Y%m%d')
+        enddate=datetime.datetime.strptime(conf.get('var','enddate'),'%Y%m%d')
+        self.timerank=[]
 
-        #self.timerank=timerank[::-1]
+        while startdate > enddate:
+        #for i in range(int(conf.get('var','for_time'))):
+            t=[]
+            st=startdate-datetime.timedelta(days=int(conf.get('var','backday')))
+            et=(st-self.priord) if enddate<(st-self.priord) else enddate
+            t.append(et.strftime(conf.get('var','format')))
+            t.append(st.strftime(conf.get('var','format')))
+            startdate=et
+            self.timerank.append(t)
+        self.timerank=timerank[::-1]
 
-    def program(self,create=1):
-        self.__get_namecode__()
+    def program(self,create=1,mode='time'):
+        '''
+        create: 1:清空原数据，重新爬取。0:追加，去重。
+        mode: 'time':按循环次数设置日期。's_e':按起止时间设置日期。
+        '''
+        self.__get_namecode__(mode)
         self.create=create
         if create==1:
             if os.path.exists(conf.get('dir','stock')):
@@ -95,7 +117,13 @@ class Stock(object):
         data = data.drop_duplicates(['ts_code','trade_date'])
         self.lock.acquire(1)
         if os.path.exists(filename):
-            data.to_csv(filename,header=None,mode='a',index=None)
+            if self.create==0:
+                temp=pd.read_csv(filename)
+                data=temp.append(data)
+                data = data.drop_duplicates(['ts_code','trade_date'])
+                data.to_csv(filename,index=None)
+            else:
+                data.to_csv(filename,header=None,mode='a',index=None)
         else:
             if len(data)!=0:
                 data.to_csv(filename,index=None)
@@ -105,4 +133,4 @@ class Stock(object):
 
 if __name__ == "__main__":
     stock=Stock()
-    stock.program(1)
+    stock.program(0,'s_t')
